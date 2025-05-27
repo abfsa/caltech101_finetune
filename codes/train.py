@@ -13,15 +13,27 @@ def get_model(model_name='resnet18', pretrained=True, num_classes=101):
     model.fc = nn.Linear(in_features, num_classes)
     return model
 
-def train(model, train_loader, test_loader, epochs, lr, device, log_dir):
+def train(model, train_loader, test_loader, 
+          epochs, 
+          lr_bb,
+          lr_fc, 
+          weight_decay, 
+          device, 
+          log_dir,
+          checkpoint_path):
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.SGD([{'params': [p for n, p in model.named_paramenters() if not n.startswith('fc')], "lr":lr_bb},
+                           {"params": model.fc.parameters(), "lr":lr_fc}],
+                             momentum=0.9,
+                             weight_decay=weight_decay,
+                             neterov=True)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     writer = SummaryWriter(log_dir=log_dir)  # TensorBoard日志
 
+    best_acc = 0.0
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -45,8 +57,27 @@ def train(model, train_loader, test_loader, epochs, lr, device, log_dir):
         writer.add_scalar('Loss/train', total_loss / len(train_loader), epoch)
         writer.add_scalar('Accuracy/train', acc, epoch)
         print(f'Epoch {epoch+1}: loss={total_loss:.3f}, acc={acc:.3f}')
+        
+        model.eval()
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for imgs, labels in test_loader:
+                imgs, labels = imgs.to(device), labels.to(device)
+                outputs = model(imgs)
+                correct+= (outputs.argmax(1) == y).sum().item()
+                total += labels.size(0)
+        val_acc = correct / total
+        writer.add_scalar('Accuracy/val', val_acc, epoch)
+
+        if val_acc > best_acc:
+            best_acc = val_acc
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), checkpoint_path)
     
+
     writer.close()
+    return best_acc
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR     = PROJECT_ROOT / "data" 
