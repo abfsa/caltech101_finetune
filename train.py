@@ -29,12 +29,9 @@ def load_config(config_path):
 if __name__ == '__main__':
     args = parse_arguments()
     cfg = load_config(args.config)
-    merged_args = {
-        **cfg.get('training', {}),
-        **vars(args)
-    }
-    data_path = merged_args.get('data_path') or cfg['data_dir']
-    output_dir = merged_args.get('output_dir') or 'models'
+
+    data_path = args.get('data_path') or cfg['data_dir']
+    output_dir = args.get('output_dir') or 'models'
     
 
     tr_loader, val_loader = get_caltech101_loaders(
@@ -48,8 +45,8 @@ if __name__ == '__main__':
     results = {}
     for lr_backbone, lr_fc, wd in search_space:
         tag       = f"bb{lr_backbone:.0e}_fc{lr_fc:.0e}_wd{wd:.0e}"
-        log_dir   = Path(merged_args.get('output_dir')) / tag
-        ckpt_path = Path(merged_args.get('output_dir')) / f"{tag}.pth"
+        log_dir   = Path(args.output_dir) / tag
+        ckpt_path = Path(args.output_dir) / f"{tag}.pth"
 
         print(f"\n=== {tag} ===")
         model = get_model(model_name=cfg["model_name"],
@@ -66,6 +63,6 @@ if __name__ == '__main__':
 
         results[tag] = best_acc
 
-    with open(Path(merged_args.get('output_dir')) / "search_results.json", "w") as f:
+    with open(Path(args.output_dir) / "search_results.json", "w") as f:
         json.dump(results, f, indent=2)
 
