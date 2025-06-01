@@ -35,7 +35,7 @@ def get_caltech101_loaders(data_dir, batch = 32, seed = 2025):
     ])
 
     train_full = datasets.Caltech101(root=data_dir, transform=transform_train, download=False, target_type="category")
-    test_full = datasets.Caltech101(root=data_dir, transform=None, download=False, target_type="category")
+    test_full = datasets.Caltech101(root=data_dir, transform=transform_test, download=False, target_type="category")
 
     #没类随机30张作为train，其余为test
     cls_to_indices = defaultdict(list)

@@ -1,0 +1,9 @@
+data_dir: "data"
+batch: 32
+epochs: 30
+model_name: resnet18
+pretrained: True
+
+lr_backbone: [1.0e-4, 5.0e-5]
+lr_fc: [1.0e-3, 5.0e-4]
+weight_decay: [0.0]

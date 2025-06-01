@@ -2,7 +2,7 @@ import torch
 import torchvision.models as models
 from torch.utils.tensorboard import SummaryWriter
 from torch import nn, optim
-from dataset import get_caltech101_loaders
+from codes.dataset import get_caltech101_loaders
 import os
 from pathlib import Path
 
@@ -23,11 +23,13 @@ def train(model, train_loader, test_loader,
           checkpoint_path):
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD([{'params': [p for n, p in model.named_paramenters() if not n.startswith('fc')], "lr":lr_bb},
+    optimizer = optim.SGD([{'params': [p for n, p in model.named_parameters() if not n.startswith('fc')], "lr":lr_bb},
                            {"params": model.fc.parameters(), "lr":lr_fc}],
                              momentum=0.9,
                              weight_decay=weight_decay,
-                             neterov=True)
+                             nesterov=True)
+    
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, eps=1e-6)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
@@ -39,7 +41,7 @@ def train(model, train_loader, test_loader,
         total_loss = 0
         correct = 0
         total = 0
-
+        val_loss = 0
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
@@ -49,26 +51,42 @@ def train(model, train_loader, test_loader,
             optimizer.step()
 
             total_loss += loss.item()
-            _, pred = torch.max(outputs, 1)
-            correct += (pred == labels).sum().item()
-            total += labels.size(0)
+            #_, pred = torch.max(outputs, 1)
+            #correct += (pred == labels).sum().item()
+            #total += labels.size(0)
 
-        acc = correct / total
-        writer.add_scalar('Loss/train', total_loss / len(train_loader), epoch)
-        writer.add_scalar('Accuracy/train', acc, epoch)
-        print(f'Epoch {epoch+1}: loss={total_loss:.3f}, acc={acc:.3f}')
-        
         model.eval()
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for imgs, labels in train_loader:
+                imgs, labels = imgs.to(device), labels.to(device)
+                outputs = model(imgs)
+                correct+= (outputs.argmax(1) == labels).sum().item()
+                total += labels.size(0)
+        train_acc = correct / total
+
         with torch.no_grad():
             correct = 0
             total = 0
             for imgs, labels in test_loader:
                 imgs, labels = imgs.to(device), labels.to(device)
                 outputs = model(imgs)
-                correct+= (outputs.argmax(1) == y).sum().item()
+                correct+= (outputs.argmax(1) == labels).sum().item()
                 total += labels.size(0)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
         val_acc = correct / total
+
+        writer.add_scalar('Loss/train', total_loss / len(train_loader), epoch)
+        writer.add_scalar('Loss/val', val_loss / len(test_loader), epoch)
+        writer.add_scalar('Accuracy/train', train_acc, epoch)
         writer.add_scalar('Accuracy/val', val_acc, epoch)
+        print(f'Epoch {epoch+1}: loss={total_loss:.3f}, acc={train_acc:.3f}, val_acc={val_acc:.3f}')
+
+        scheduler.step(val_acc)          # 根据验证准确率调整 LR
+        for i, g in enumerate(optimizer.param_groups):
+            writer.add_scalar(f'LR/group{i}', g["lr"], epoch)
 
         if val_acc > best_acc:
             best_acc = val_acc
